@@ -3,16 +3,21 @@ import { getModelToken } from '@nestjs/mongoose';
 import { UsersService } from '../users.service';
 import { User, UserDocument } from '../schemas/users.schema';
 import { Model } from 'mongoose';
+import { BadRequestException } from '@nestjs/common';
+import { CreateUserDto } from '../dto/create-user.dto';
 
 const mockUser = {
   name: 'John Doe',
   email: 'john.doe@example.com',
+  age: 25,
 };
 
 const mockUserModel = {
   create: jest.fn().mockResolvedValue(mockUser),
   find: jest.fn(),
-  findOne: jest.fn(),
+  findOne: jest.fn().mockReturnValue({
+    exec: jest.fn().mockResolvedValue(null),
+  }),
   findById: jest.fn(),
   findByIdAndUpdate: jest.fn().mockReturnThis(),
   findByIdAndDelete: jest.fn().mockReturnThis(),
@@ -38,13 +43,56 @@ describe('UsersService', () => {
     model = module.get<Model<UserDocument>>(getModelToken(User.name));
   });
 
-  it('should create a user', async () => {
-    const user = await service.create(mockUser.name, mockUser.email);
+  it('should create a user if age is 18 or above and email is unique', async () => {
+    jest.spyOn(mockUserModel, 'findOne').mockReturnValue({
+      exec: jest.fn().mockResolvedValueOnce(null),
+    });
+
+    const createUserDto: CreateUserDto = {
+      name: mockUser.name,
+      email: mockUser.email,
+      age: mockUser.age,
+    };
+
+    const user = await service.create(createUserDto);
     expect(user).toEqual(mockUser);
     expect(mockUserModel.create).toHaveBeenCalledWith({
       name: mockUser.name,
       email: mockUser.email,
+      age: mockUser.age,
     });
+  });
+
+  it('should throw an error if age is below 18', async () => {
+    const createUserDto: CreateUserDto = {
+      name: mockUser.name,
+      email: mockUser.email,
+      age: 15,
+    };
+
+    await expect(service.create(createUserDto)).rejects.toThrow(
+      new BadRequestException('User must be at least 18 years old.'),
+    );
+  });
+
+  it('should throw an error if email already exists', async () => {
+    jest.spyOn(mockUserModel, 'findOne').mockImplementation(({ email }) => {
+      return {
+        exec: jest
+          .fn()
+          .mockResolvedValueOnce(email === mockUser.email ? mockUser : null),
+      };
+    });
+
+    const createUserDto: CreateUserDto = {
+      name: mockUser.name,
+      email: mockUser.email, // Yanlış email
+      age: mockUser.age,
+    };
+
+    await expect(service.create(createUserDto)).rejects.toThrow(
+      new BadRequestException('Email already exists.'),
+    );
   });
 
   it('should return an array of users', async () => {

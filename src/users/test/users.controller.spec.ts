@@ -3,10 +3,13 @@ import { UsersController } from '../users.controller';
 import { UsersService } from '../users.service';
 import { getModelToken } from '@nestjs/mongoose';
 import { User } from '../schemas/users.schema';
+import { BadRequestException } from '@nestjs/common';
+import { CreateUserDto } from '../dto/create-user.dto';
 
 const mockUser = {
   name: 'John Doe',
   email: 'john.doe@example.com',
+  age: 25,
 };
 
 describe('UsersController', () => {
@@ -37,12 +40,81 @@ describe('UsersController', () => {
     it('should create a user', async () => {
       jest.spyOn(service, 'create').mockResolvedValue(mockUser);
 
-      const result = await controller.create(mockUser.name, mockUser.email);
+      const createUserDto: CreateUserDto = {
+        name: mockUser.name,
+        email: mockUser.email,
+        age: mockUser.age,
+      };
+
+      const result = await controller.create(createUserDto);
 
       expect(result).toEqual(mockUser);
-      expect(service.create).toHaveBeenCalledWith(
-        mockUser.name,
-        mockUser.email,
+      expect(service.create).toHaveBeenCalledWith(createUserDto);
+    });
+
+    it('should throw an error if age is below 18', async () => {
+      jest
+        .spyOn(service, 'create')
+        .mockRejectedValue(
+          new BadRequestException('User must be at least 18 years old.'),
+        );
+
+      const createUserDto: CreateUserDto = {
+        name: mockUser.name,
+        email: mockUser.email,
+        age: 17,
+      };
+
+      await expect(controller.create(createUserDto)).rejects.toThrow(
+        new BadRequestException('User must be at least 18 years old.'),
+      );
+    });
+
+    it('should throw an error if email already exists', async () => {
+      jest
+        .spyOn(service, 'create')
+        .mockRejectedValue(new BadRequestException('Email already exists.'));
+
+      const createUserDto: CreateUserDto = {
+        name: mockUser.name,
+        email: mockUser.email,
+        age: mockUser.age,
+      };
+
+      await expect(controller.create(createUserDto)).rejects.toThrow(
+        new BadRequestException('Email already exists.'),
+      );
+    });
+
+    it('should throw an error if required fields are missing', async () => {
+      jest
+        .spyOn(service, 'create')
+        .mockRejectedValue(
+          new BadRequestException('Name, email, and age are required.'),
+        );
+
+      const missingNameDto = {
+        email: mockUser.email,
+        age: mockUser.age,
+      } as CreateUserDto;
+      await expect(controller.create(missingNameDto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      const missingEmailDto = {
+        name: mockUser.name,
+        age: mockUser.age,
+      } as CreateUserDto;
+      await expect(controller.create(missingEmailDto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      const missingAgeDto = {
+        name: mockUser.name,
+        email: mockUser.email,
+      } as CreateUserDto;
+      await expect(controller.create(missingAgeDto)).rejects.toThrow(
+        BadRequestException,
       );
     });
   });
